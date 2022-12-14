@@ -1,35 +1,50 @@
-use std::{error::Error, fmt::{self, Formatter, Display}, sync::atomic::{AtomicUsize, Ordering}};
+use std::{error::Error, fmt::{self, Formatter, Display}, sync::atomic::{AtomicUsize, Ordering}, iter::Peekable, num::ParseIntError};
+
+#[derive(Debug, Clone, Copy)]
+struct Location {
+    begin: usize,
+    len: usize,
+}
 
 #[derive(Debug, Clone)]
 pub struct TokenizationError {
-    begin: usize,
-    end: usize,
+    location: Location,
     kind: TokenizationErrorKind,
 }
 
 #[derive(Debug, Clone)]
 pub enum TokenizationErrorKind {
     NoSuchPunct(String),
+    ParseIntError(ParseIntError)
 }
 
 impl Error for TokenizationError {}
 
 impl Display for TokenizationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?} at {}", self.kind, self.begin)
+        write!(f, "{:?} at {}", self.kind, self.location.begin)
     }
 }
 
 struct RawToken<'a> {
-    begin: usize,
-    end: usize,
-    content: &'a str
+    location: Location,
+    content: &'a str,
 }
 
-pub enum Token {
+pub struct Token {
+    location: Location,
+    content: TokenContent,
+}
+
+pub enum TokenContent {
+    /// Any punctuation mark/operator
     Punct(Punct),
-    Ident(Ident),
-    Literal(Literal),
+
+    /// Word is any free floating word that is part of the code. It
+    /// may be an identifier or a keyword
+    Word(Ident),
+
+    Number(u64),
 }
 
 pub enum Punct {
@@ -57,8 +72,7 @@ impl <'a> TryFrom<&RawToken<'a>> for Punct {
             ")" => Ok(CloseParenth),
             "." => Ok(Period),
             _ => Err(TokenizationError {
-                begin: value.begin,
-                end: value.end,
+                location: value.location,
                 kind: TokenizationErrorKind::NoSuchPunct(value.content.to_string()),
             }),
         }
@@ -67,31 +81,45 @@ impl <'a> TryFrom<&RawToken<'a>> for Punct {
 
 pub struct Ident;
 
-pub enum Literal {
-    Number(i64, i8),
-}
-
-pub fn tokenize(mut stream: impl Iterator<Item = char>) -> Vec<Token> {
+pub fn tokenize(mut stream: Peekable<impl Iterator<Item = char>>) -> Vec<Token> {
     let mut pos = 0;
     let mut tokens = Vec::new();
 
     while let Some(c) = stream.next() {
         if let Ok(punct) = (&RawToken {
-            content: &String::from(c),
-            begin: pos,
-            end: pos,
-        }).try_into()
+                content: &String::from(c),
+                location: Location { begin: pos, len: 1 }
+            }).try_into()
         {
-            tokens.push(Token::Punct(punct))
+            tokens.push(Token { 
+                content: TokenContent::Punct(punct), 
+                location: Location { begin: pos, len: 1 }
+            });
+
+            pos += 1;
         }
         else if c.is_numeric() {
-            todo!("if it is a number")
+            let mut num_str = String::from(c);
+            while let Some(n) = stream.peek() {
+                if n.is_numeric() {
+                    num_str.push(stream.next().unwrap());
+                }
+                else {
+                    break;
+                }
+            }
+
+            let location = Location { begin: pos, len: num_str.len() };
+
+            tokens.push(Token {
+                content: TokenContent::Number(u64::from_str_radix(&num_str, 10)
+                    .expect("Unexpected error when parsing a number")),
+                location,
+            })
         }
         else if c.is_ascii_alphabetic() {
             todo!("check for ident")
         }
-
-        pos += 1;
     }
 
     todo!("Make sure that mistakes are fixed (e.g. if a number beginning
