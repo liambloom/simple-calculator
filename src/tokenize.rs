@@ -14,14 +14,85 @@ pub enum TokenContent {
     // Word is any free floating word that is part of the code. It
     // may be an identifier or a keyword
     //Word(Ident),
+    Ident(String),
 
     Value(Value),
+
+    Block(Delimiter, TokenStream),
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+pub struct Delimiter {
+    ty: DelimiterType, 
+    direction: DelimiterDirection,
+}
+
+impl Delimiter {
+    pub fn new(ty: DelimiterType, direction: DelimiterDirection) -> Self {
+        Self { ty, direction }
+    }
+
+    pub fn ty(&self) -> &DelimiterType {
+        &self.ty
+    }
+
+    pub fn direction(&self) -> &DelimiterDirection {
+        &self.direction
+    }
+}
+
+impl TryFrom<char> for Delimiter {
+    type Error = ();
+
+    fn try_from(ch: char) -> Result<Self, Self::Error> {
+        use DelimiterType::*;
+        use DelimiterDirection::*;
+
+        match ch {
+            '(' => Ok(Self {
+                ty: Parenthases,
+                direction: Open,
+            }),
+            ')' => Ok(Self {
+                ty: Parenthases,
+                direction: Close,
+            }),
+            _ => Err(())
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+pub enum DelimiterType {
+    Parenthases
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+pub enum DelimiterDirection {
+    Open,
+    Close
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum Value {
     Number(Rational64),
 }
+
+pub type Ident = LocatableContent<String>;
+
+// impl TryInto<Ident> for Token {
+//     type Error = ();
+
+//     fn try_into(self) -> Result<Ident, Self::Error> {
+//         let (content, location) = (*self.content(), *self.location());
+//         if let TokenContent::Ident(name) = self.content() {
+//             Ok(LocatableContent { location: *self.location(), content: *name })
+//         }
+//         else {
+//             Err(())
+//         }
+//     }
+// }
 
 struct NoSuchPunct;
 
@@ -31,8 +102,6 @@ pub enum Punct {
     Dash,
     Asterisk,
     Slash,
-    OpenParenth,
-    CloseParenth,
     // Period,
 }
 
@@ -47,8 +116,6 @@ impl <'a> TryFrom<UnprocessedToken<'a>> for Punct {
             "-" => Ok(Dash),
             "*" => Ok(Asterisk),
             "/" => Ok(Slash),
-            "(" => Ok(OpenParenth),
-            ")" => Ok(CloseParenth),
             // "." => Ok(Period),
             _ => Err(NoSuchPunct),
         }
@@ -65,11 +132,17 @@ pub type TokenStream = Vec<Token>;
 
 pub struct Tokenizer {
     location: Location,
+    depth: u8,
+    delimiter: Vec<Delimiter>,
 }
 
 impl Tokenizer {
     fn new() -> Self {
-        Self { location: Location::default() }
+        Self { 
+            location: Location::default(),
+            depth: 0,
+            delimiter: Vec::new(),
+        }
     }
 
     fn error(&self, kind: CompilationErrorKind) -> CompilationError {
@@ -152,6 +225,9 @@ impl Tokenizer {
                 });
 
                 self.location.begin += 1;
+            }
+            else if let Ok(delim) = Delimiter::try_from(c) {
+                todo!();
             }
             else if c == ' ' {
                 self.location.begin += 1;

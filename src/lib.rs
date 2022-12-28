@@ -1,7 +1,9 @@
+use std::fmt::{self, Formatter, Display};
+
 pub mod tokenize;
 pub mod ast;
 pub mod error;
-mod native_functions;
+pub mod runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Location {
@@ -22,6 +24,12 @@ impl Location {
 impl Default for Location {
     fn default() -> Self {
         Self { begin: 0, len: 1 }
+    }
+}
+
+impl Display for Location {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}-{}", self.begin, self.begin + self.len)
     }
 }
 
