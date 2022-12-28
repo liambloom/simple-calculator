@@ -21,7 +21,13 @@ pub struct Runtime {
 }
 
 impl Runtime {
-
+  pub fn new() -> Self {
+    Self {
+      functions: HashMap::from([
+        (String::from("print"), Rc::new(Print) as Rc<dyn Function>),
+      ])
+    }
+  }
 
   pub fn resolve_function(&self, ident: &Ident) -> Result<Rc<dyn Function>> {
     match self.functions.get(ident.content()) {

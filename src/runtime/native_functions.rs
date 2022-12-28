@@ -4,7 +4,7 @@ use crate::ast::{Args, Value};
 pub struct Print;
 
 impl Function for Print {
-    fn run(&self, runtime: &Runtime, args: &Args) -> Option<Result<Value>> {
+    fn run(&self, _: &Runtime, args: &Args) -> Option<Result<Value>> {
         println!("{:?}", args[0]);
         None
     }
