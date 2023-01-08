@@ -1,5 +1,5 @@
-use std::{error::Error, fmt::{self, Formatter, Display}, sync::{atomic::{AtomicUsize, Ordering}, RwLock, Mutex, PoisonError}, iter::Peekable, num::ParseIntError, cell::RefCell, collections::HashMap, thread::{ThreadId, self}};
-use crate::{Location, error::*, LocatableContent};
+use std::{cell::RefCell, collections::HashMap, error::Error, fmt::{self, Display, Formatter}, iter::Peekable, num::ParseIntError, sync::{atomic::{AtomicUsize, Ordering}, Mutex, PoisonError, RwLock}, thread::{self, ThreadId}};
+use crate::{error::*, LocatableContent, Location};
 use num_rational::Rational64;
 
 struct UnprocessedToken<'a>(&'a str);
@@ -16,9 +16,13 @@ pub enum TokenContent {
     //Word(Ident),
     Ident(String),
 
+    
+
     Value(Value),
 
-    Block(Delimiter, TokenStream),
+    Block(DelimiterType, TokenStream),
+
+    EOF
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
@@ -78,8 +82,6 @@ pub enum Value {
     Number(Rational64),
 }
 
-pub type Ident = LocatableContent<String>;
-
 // impl TryInto<Ident> for Token {
 //     type Error = ();
 
@@ -102,6 +104,7 @@ pub enum Punct {
     Dash,
     Asterisk,
     Slash,
+    Comma,
     // Period,
 }
 
@@ -116,6 +119,7 @@ impl <'a> TryFrom<UnprocessedToken<'a>> for Punct {
             "-" => Ok(Dash),
             "*" => Ok(Asterisk),
             "/" => Ok(Slash),
+            "," => Ok(Comma),
             // "." => Ok(Period),
             _ => Err(NoSuchPunct),
         }
@@ -132,16 +136,12 @@ pub type TokenStream = Vec<Token>;
 
 pub struct Tokenizer {
     location: Location,
-    depth: u8,
-    delimiter: Vec<Delimiter>,
 }
 
 impl Tokenizer {
     fn new() -> Self {
         Self { 
             location: Location::default(),
-            depth: 0,
-            delimiter: Vec::new(),
         }
     }
 
@@ -155,6 +155,8 @@ impl Tokenizer {
 
     fn tokenize_inner(&mut self, mut stream: Peekable<impl Iterator<Item = char>>) -> Result<TokenStream, CompilationErrorKind> {
         let mut tokens = Vec::new();
+        let mut blocks = Vec::new();
+        let mut delims = Vec::new();
 
         while let Some(c) = stream.next() {
             self.location.len = 1;
@@ -227,19 +229,66 @@ impl Tokenizer {
                 self.location.begin += 1;
             }
             else if let Ok(delim) = Delimiter::try_from(c) {
-                todo!();
-            }
-            else if c == ' ' {
+                if delim.direction() == &DelimiterDirection::Open {
+                    blocks.push(tokens);
+                    tokens = Vec::new();
+                    delims.push(LocatableContent::new(delim, self.location));
+                }
+                else { // delim.direction() == &DelimiterDirection::Close
+                    let close = delim;
+                    match delims.pop() {
+                        Some(open) if open.content().ty() == close.ty() => {
+                            let delimited = tokens;
+                            tokens = blocks.pop().unwrap();
+                            tokens.push(Token {
+                                content: TokenContent::Block(*close.ty(), delimited),
+                                location: (open.location..=self.location).into(),
+                            })
+                        },
+                        None => return Err(CompilationErrorKind::UnmatchedDelimiter),
+                        _ => return Err(CompilationErrorKind::MismatchedDelimiter),
+                    }
+                }
+
                 self.location.begin += 1;
+            }
+            else if c.is_whitespace() {
+                self.location.begin += 1;
+            }
+            else if c.is_ascii_alphabetic() {
+                let mut word = String::from(c);
+
+                while let Some(n) = stream.peek() {
+                    if n.is_ascii_alphabetic() {
+                        word.push(stream.next().unwrap());
+                        self.location.len += 1;
+                    }
+                    else {
+                        break;
+                    }
+                } 
+
+                
             }
             else {
                 return Err(CompilationErrorKind::UnrecognizedCharacter);
             }
         }
 
-        Ok(tokens)
+        self.location.len = 0;
+
+        if delims.is_empty() {
+            tokens.push(Token::new(TokenContent::EOF, self.location));
+            Ok(tokens)
+        }
+        else {
+            Err(CompilationErrorKind::UnmatchedDelimiter)
+        }
+
     }
 }
+
+pub type Ident = String;
 
 
 

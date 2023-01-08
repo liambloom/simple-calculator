@@ -1,8 +1,11 @@
-use std::{rc::Rc, collections::HashMap, ops::Range};
+use std::{collections::HashMap, ops::Range, rc::Rc};
+use lazy_static::lazy_static;
 
 use num_rational::Rational64;
 
-use crate::{tokenize::{Token, TokenStream, Punct, TokenContent, Ident}, Location, LocatableContent, runtime};
+use crate::{LocatableContent, Location, runtime, tokenize::{Punct, Token, TokenContent, TokenStream}};
+use crate::error::{CompilationError, CompilationErrorKind};
+use crate::tokenize::{DelimiterType, Ident};
 
 pub type CodeObject = LocatableContent<CodeObjectContent>;
 
@@ -65,6 +68,15 @@ impl BinaryExpr {
             Divide => "/",
         }
     }
+
+    pub fn priority(&self) -> u8 {
+        use BinaryExpr::*;
+
+        match self {
+            Add | Subtract => 1,
+            Multiply | Divide => 2,
+        }
+    }
 }
 
 type FnInfo = (Ident, Vec<Expression>);
@@ -89,16 +101,69 @@ impl Value {
 }
 
 
-fn parse(stream: TokenStream) -> Code {
-    let mut parenthases = vec![(Code::new(), Location::default())];
+fn parse(stream: TokenStream) -> Result<Code, CompilationError> {
+    let mut code = Code::new();
+    let mut iter = stream.into_iter();
 
-    for (i, token) in stream.iter().enumerate() {
-        
-        
-        
+    while let Some(token) = iter.next()  {
+        if let TokenContent::Ident(ident) = token.content() {
+            let maybe_args = iter.next().unwrap();
+            if let Token { content: TokenContent::Block(DelimiterType::Parenthases, args), location: arg_location } = maybe_args {
+                let mut parsed_args = Vec::new();
+                let mut last_comma = None;
+                for e in args.iter().enumerate() {
+                    if e.1.content() == &TokenContent::Punct(Punct::Comma) {
+                        let arg_start = last_comma.map(|n| n + 1).unwrap_or(0);
+                        if e.0 == arg_start {
+                            return Err(CompilationError::new(e.1.location, CompilationErrorKind::TwoCommas));
+                        }
+                        else {
+                            parsed_args.push(eval_expr(&args[arg_start..e.0]));
+                            last_comma = Some(e.0);
+                        }
+                    }
+                }
+
+                code.push(CodeObject::new(CodeObjectContent::ExecuteFn((ident.clone(), parsed_args)), (*token.location()..=arg_location).into()));
+            }
+            else {
+                return Err(CompilationError::new(maybe_args.location, CompilationErrorKind::SyntaxError {
+                    expected: vec![String::from("(")], found: maybe_args
+                }));
+            }
+        }
     }
 
-    todo!()
+    Ok(code)
+}
+
+fn eval_expr(stream: &[Token]) -> Expression {
+    lazy_static! {
+        static ref OPERATOR_ORDER: [Vec<Punct>; 2] = [
+            vec![Punct::Asterisk, Punct::Slash],
+            vec![Punct::Plus, Punct::Dash],
+        ];
+
+        static ref SUPPORTED_OPERATORS: Vec<Punct> = {
+            let mut v = Vec::new();
+            for i in OPERATOR_ORDER.iter() {
+                for j in i {
+                    v.push(*j);
+                }
+            }
+            v
+        };
+    }
+
+    let operators = [Vec::new(), Vec::new()];
+
+    for token in stream.iter() {
+
+    }
+
+
+
+    todo!();
 }
 
 // const ORDER: HashMap<Punct, u8> = HashMap::from([

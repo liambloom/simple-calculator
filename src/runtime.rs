@@ -1,7 +1,8 @@
-use crate::{Location, tokenize::Ident, ast::{Args, Value, ExpressionContent, Expression}};
-use std::{result, collections::HashMap, rc::Rc};
+use crate::{ast::{Args, Expression, ExpressionContent, Value}, LocatableContent, Location};
+use std::{collections::HashMap, rc::Rc, result};
 use native_functions::*;
 use runtime_errors::*;
+use crate::tokenize::Ident;
 
 pub mod native_functions;
 pub mod runtime_errors;
@@ -29,10 +30,10 @@ impl Runtime {
     }
   }
 
-  pub fn resolve_function(&self, ident: &Ident) -> Result<Rc<dyn Function>> {
-    match self.functions.get(ident.content()) {
+  pub fn resolve_function(&self, ident: &Ident, location: &Location) -> Result<Rc<dyn Function>> {
+    match self.functions.get(ident) {
       Some(f) => Ok(Rc::clone(f)),
-      None => Err(Box::new(ResolutionError::new(ident.clone())))
+      None => Err(Box::new(ResolutionError::new(LocatableContent::new(ident.clone(), *location))))
     }
   }
 
@@ -42,7 +43,7 @@ impl Runtime {
     match expr.content() {
       ExecuteFn((f, raw_args)) 
         => Ok(self
-            .resolve_function(f)?
+            .resolve_function(f, expr.location())?
             .run(self, &raw_args.iter()
               .map(|arg| self.eval_expr(arg))
               .collect::<Result<Args>>()?)

@@ -1,4 +1,5 @@
 use crate::tokenize::Ident;
+use crate::LocatableContent;
 
 use super::Location;
 
@@ -7,10 +8,10 @@ pub trait RuntimeError {
   fn location(&self) -> Location;
 }
 
-pub struct ResolutionError(Ident);
+pub struct ResolutionError(LocatableContent<Ident>);
 
 impl ResolutionError {
-  pub fn new(ident: Ident) -> Self {
+  pub fn new(ident: LocatableContent<Ident>) -> Self {
     Self(ident)
   }
 }

@@ -1,6 +1,7 @@
 use std::{error::Error, fmt::{self, Display, Formatter}};
 
 use crate::Location;
+use crate::tokenize::Token;
 
 #[derive(Debug, Copy, Clone)]
 struct UnknownLocation;
@@ -28,6 +29,16 @@ pub enum CompilationErrorKind {
 
     /// The opening and closing delimiters do not match. E.g. `(foo}`
     MismatchedDelimiter,
+
+    TwoCommas,
+
+    /// The compiler has no idea what's going on
+    SyntaxError {
+        expected: Vec<String>,
+        found: Token,
+    },
+
+
 }
 
 impl CompilationError {
